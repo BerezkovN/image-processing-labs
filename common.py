@@ -20,6 +20,7 @@ def open_image(main_window):
             ("PNG files", "*.png"),
             ("all files", "*.*"),
         ),
+        defaultextension="*.*",
     )
     if not file_path or not os.path.exists(file_path):
         return False
@@ -201,3 +202,58 @@ def equalizeHist(image):
     cdf_min = cdf[cdf > 0].min()
     lut = ((cdf - cdf_min) * 255 / (image.size - cdf_min)).astype(np.uint8)
     return apply_lut_parallel(image, lut)
+
+@jit(nopython=True, parallel=True)
+def fft(x):
+    N = x.shape[0]
+    if N <= 1:
+        # Convert to complex128 because numba requires consistent types
+        return x.astype(np.complex128)  
+    even = fft(x[0::2])
+    odd = fft(x[1::2])
+    T = np.array([np.exp(-2j * np.pi * k / N) * odd[k] for k in range(N // 2)])
+    result = np.empty(N, dtype=np.complex128)
+    half_N = N // 2
+    for k in range(half_N):
+        result[k] = even[k] + T[k]
+        result[k + half_N] = even[k] - T[k]
+    return result
+
+
+
+@jit(nopython=True, parallel=True, nogil=True)
+def fft2(x):
+    M, N = x.shape
+    rows = np.empty_like(x, dtype=np.complex128)
+    cols = np.empty_like(x, dtype=np.complex128)
+    for i in prange(M):
+        rows[i] = fft(x[i])
+
+    for i in prange(N):
+        cols[:, i] = fft(rows[:, i])
+    
+    return cols
+
+@jit(nopython=True)
+def ifft2(x):
+    return np.conj(fft2(np.conj(x))) / (x.shape[0] * x.shape[1])
+
+@jit(nopython=True)
+def fftshift(x):
+    y = np.empty_like(x)
+    M, N = x.shape
+    y[:M//2, :N//2] = x[M//2:, N//2:]
+    y[M//2:, N//2:] = x[:M//2, :N//2]
+    y[:M//2, N//2:] = x[M//2:, :N//2]
+    y[M//2:, :N//2] = x[:M//2, N//2:]
+    return y
+
+@jit(nopython=True)
+def ifftshift(x):
+    y = np.empty_like(x)
+    M, N = x.shape
+    y[M//2:, N//2:] = x[:M//2, :N//2]
+    y[:M//2, :N//2] = x[M//2:, N//2:]
+    y[M//2:, :N//2] = x[:M//2, N//2:]
+    y[:M//2, N//2:] = x[M//2:, :N//2]
+    return y

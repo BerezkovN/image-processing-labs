@@ -58,6 +58,15 @@ class ImageViewer:
         
         self.dead = True
 
+    def width(self):
+        return self.image.shape[0]; 
+
+    def height(self):
+        return self.image.shape[1];
+
+    def get_image(self):
+        return self.image;
+
     def get_roi(self):
         H, W = self.image.shape[:2]
         roi_W, roi_H = int(W / self.scale), int(H / self.scale)
